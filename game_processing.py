@@ -134,6 +134,8 @@ def load_games(li_username):
   insert_result = execute_db_query(GAMES_INSERT_QUERY, params=dict(games=games_processed))
   print(f"Games Inserted. Insertion Summary: {insert_result.summary.counters}")
   
+  # This code snippet is fetching game data from the database for visualization purposes.
+  # This code snippet is fetching game data from the database for visualization purposes.
   print("Fetching game data for visualization")
   game_data_graph = execute_db_query(FETCH_USER_GAMES_QUERY, params=dict(playerId=li_username), result_transformer=Result.graph)
   print(f"Data Fetched. Received transformed graph object")

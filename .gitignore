@@ -1,8 +1,10 @@
-__pycache__
+**/__pycache__
 venv
 .streamlit
+Encoder-ChessLM
 
 requirements.txt
 *.env
 Neo4j*.txt
 *.safetensors
+

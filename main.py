@@ -1,73 +1,58 @@
 import streamlit as st
 import streamlit.components.v1 as components
-from neo4j_viz import VisualizationGraph
-from neo4j_viz.neo4j import from_neo4j
-import time 
 
 from game_processing import load_games
+
 # from rag import execute_rag_query
 
-st.title("Welcome to Lichess-Neo4j")
-player_input = st.text_input("Enter Lichess Username", value="HoozYourDaddy")
+def setup_session():
+  if "queries" not in st.session_state:
+    st.session_state.queries = []  
+  if "vg" not in st.session_state:
+    st.session_state.vg = None
 
-if "queries" not in st.session_state:
-  st.session_state.queries = []
+setup_session()
+st.set_page_config(page_title="NeoChess", layout="wide")
+st.title("Welcome to NeoChess")
+col1, col2 = st.columns(2)
+# player_input = ""
 
-if st.button("Visualize Graph"):
-  with st.status("Loading games of " + player_input) as status:
-    vg = load_games(player_input)
-    print(f"Graph has {len(vg.nodes)} nodes and {len(vg.relationships)} relations")
-    status.update(label="Data Loading complete", expanded=False)
-  
-  html_content = vg.render()  
-  # Display in Streamlit using the components' HTML renderer
-  components.html(html_content.data,height=600,scrolling=True)
-  
-  # with st.spinner("Fetching graph data..."):
-  #   try:
-  #     # Fetch the nodes and relationships
-  #     viz_data = get_graph_data(player_input)
-      
-  #     # Render to HTML
-  #     # We use height='600px' to ensure it fits the Streamlit container
-  #     html_content = viz_data.render()
-      
-  #     # Display in Streamlit using the components' HTML renderer
-  #     components.html(
-  #         html_content.data,
-  #         height=600,
-  #         scrolling=True)
-  #   except Exception as e:
-  #         st.error(f"Error fetching data: {e}")
+with col1:
+  player_input = st.text_input(
+    "Enter Lichess Username", placeholder="Enter Lichess User Name"
+  )
+  if st.button("Visualize Graph", disabled=len(player_input) == 0):
+    with st.status("Loading games of " + player_input) as status:
+      st.session_state.vg = load_games(player_input)
+      status.update(label="Data Loading complete", expanded=False)
+    with st.container(border=True):
+      html_content = st.session_state.vg.render()
+      components.html(html_content.data, height=400, scrolling=True)
 
-  #   vgGraph = get_graph_data(player_input)
-  #   nodes = vgGraph.nodes
-  #   relationships = vgGraph.relationships
+@st.fragment
+def render_chat():
+  # Initialize queries if not present
+  for q in st.session_state.queries:
+    st.chat_message(q["role"]).markdown(q["content"])
+  if prompt := st.chat_input("Ask about your games"):
+    # st.chat_message("user").markdown(prompt)
+    st.session_state.queries.append({"role": "user", "content": prompt})
+    response = f"Echo: {prompt}"
+    # st.chat_message("ai").markdown(response)
+    st.session_state.queries.append({"role": "ai", "content": response})
+    st.rerun(scope="fragment")
 
-  #   # for node in nodes:
-  #   #     if "Player" in node.:
-  #   #         node.color = "#FF4B4B"  # Red for players
-  #   #         node.size = 30
-  #   #     elif "FEN" in node.labels:
-  #   #         node.color = "#1C83E1"  # Blue for positions
-  #   #         node.size = 15
+with col2:
+  render_chat()
 
-  #   vg = VisualizationGraph(nodes, relationships)
-    
-  # if query_prompt := st.chat_input("Ask a question about your games?"):
-  #   st.session_state.queries.append({"role": "user", "content": query_prompt})
-    
-  #   with st.chat_message("user"):
-  #     st.markdown(query_prompt)
-    
-  #   for message in st.session_state.queries:
-  #     with st.chat_message(message["role"]):
-  #       st.markdown(message["content"])
-    
-  #   response = get_query_response(query_prompt)
-  #   st.session_state.queries.append({"role": "ai", "content": query_prompt})
 
-  #   with st.chat_message("ai"):
-  #     st.markdown(response)
-    
-  
+# with col2:
+#   for q in st.session_state.queries:
+#     st.chat_message(q['role']).markdown(q['content'])
+
+#   if prompt := st.chat_input("Ask a question about your Chess games"):
+#     st.chat_message("user").markdown(prompt)
+#     st.session_state.queries.append({"role": "user", "content": prompt})
+#     response = f"Echo {prompt}"
+#     st.chat_message("ai").markdown(response)
+#     st.session_state.queries.append({"role": "ai", "content": response})
