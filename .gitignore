@@ -3,8 +3,7 @@ venv
 .streamlit
 Encoder-ChessLM
 
-requirements.txt
+*.txt
 *.env
-Neo4j*.txt
 *.safetensors
 

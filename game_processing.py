@@ -3,6 +3,7 @@ import berserk
 import chess
 import time
 from db import execute_db_query
+from rag import generate_fen_embeddings
 from neo4j import Result
 from neo4j_viz import neo4j
 
@@ -76,7 +77,6 @@ FETCH_USER_GAMES_QUERY = """
   LIMIT 200
 """
 
-
 @st.cache_resource
 def get_lichess_client():
 	li_session = berserk.TokenSession(st.secrets.LICHESS_API_TOKEN)
@@ -131,14 +131,22 @@ def load_games(li_username):
   st.write("Create knowledge Graph")
   
   print("Inserting games in neo4j")
+  insert_time_1 = time.time()
   insert_result = execute_db_query(GAMES_INSERT_QUERY, params=dict(games=games_processed))
-  print(f"Games Inserted. Insertion Summary: {insert_result.summary.counters}")
+  insert_time_2 = time.time()
+  print(f"Games Inserted in {insert_time_2 - insert_time_1} seconds. Insertion Summary: {insert_result.summary.counters}")
   
   # This code snippet is fetching game data from the database for visualization purposes.
   # This code snippet is fetching game data from the database for visualization purposes.
   print("Fetching game data for visualization")
   game_data_graph = execute_db_query(FETCH_USER_GAMES_QUERY, params=dict(playerId=li_username), result_transformer=Result.graph)
   print(f"Data Fetched. Received transformed graph object")
+  
+  fen_time_1 = time.time()
+  print("Generate FEN embedding")
+  generate_fen_embeddings()
+  fen_time_2 = time.time()
+  print(f"FEN embeddings generated in {fen_time_2 - fen_time_1} seconds")
   
   print("Building Visualization graph")
   vg = neo4j.from_neo4j(game_data_graph)
