@@ -11,7 +11,8 @@ def setup_session():
     ("queries", []), 
     ("username", ""), 
     ("is_processing_prompt", False), 
-    ("current_prompt", ""), ("vg", None)
+    ("current_prompt", ""), ("vg", None),
+    ("game_data_loaded", False)
   ]
   for k in keys:
     key = k[0]
@@ -36,14 +37,14 @@ st.title("ChessRAG")
 col1, col2 = st.columns(2)
 
 with col1:
-  player_input = st.text_input(
-    "Enter Lichess Username", placeholder="Enter Lichess User Name"
-  )
+  player_input = st.text_input("", placeholder="Enter Lichess User Name")
   st.session_state.username = player_input
-  if st.button("Visualize Graph", disabled=len(player_input) == 0):
-    with st.status("Loading games of " + player_input) as status:
+  if st.button("Load My Games", disabled=len(player_input) == 0):
+    with st.status(f"Loading {st.secrets.GAME_FETCH_COUNT} games of {player_input}") as status:
       st.session_state.vg = load_games(player_input)
-      status.update(label="Data Loading complete", expanded=False)
+      st.session_state.game_data_loaded = True
+      status.update(label="Games have been loaded. Fire your queries", expanded=False)
+      
     with st.container(border=True):
       html_content = st.session_state.vg.render()
       components.html(html_content.data, height=400, scrolling=True)
@@ -58,8 +59,8 @@ def render_chat():
       st.chat_message(q["role"]).markdown(q["content"])
   
   user_prompt = st.chat_input(
-    "What do you want to know about your games?",
-    disabled=st.session_state.is_processing_prompt
+    "What do you want to know about your games?" if st.session_state.game_data_loaded else "Load your games before you can ask a question",
+    disabled=not st.session_state.game_data_loaded or st.session_state.is_processing_prompt
   )
   
   if user_prompt:
@@ -68,7 +69,7 @@ def render_chat():
     st.session_state.is_processing_prompt = True
     st.rerun(scope="fragment")
     
-  if st.session_state.is_processing_prompt and st.session_state.current_prompt:  
+  if not st.session_state.game_data_loaded and st.session_state.is_processing_prompt and st.session_state.current_prompt:  
     st.session_state.queries.append(get_chat_message("user", st.session_state.current_prompt))
     response = "Something went wrong when answering the query"
     with chat_container:

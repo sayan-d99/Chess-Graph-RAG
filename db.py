@@ -1,6 +1,5 @@
 from neo4j import GraphDatabase, Result
 import streamlit as st
-from neo4j_viz import neo4j
 
 @st.cache_resource()
 def get_db_driver():
@@ -12,7 +11,6 @@ def get_db_driver():
   return driver
 
 db_driver = get_db_driver()
-
 
 def execute_db_query(query, params, result_transformer=Result.to_eager_result):
   query_result = None
