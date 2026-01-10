@@ -6,8 +6,8 @@ import numpy as np
 import streamlit as st
 from langchain.embeddings.base import Embeddings
 from langchain_neo4j import GraphCypherQAChain, Neo4jGraph, Neo4jVector
-from langchain_core.messages import AIMessage
 from langchain_core.prompts import PromptTemplate
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
 from typing import List, Any
 
@@ -266,25 +266,23 @@ def setup_graph_and_vector():
   vector_store = generate_fen_embeddings()
   return vector_store, embedding_model, graph
 
+print(f"model: {st.secrets.GEMINI_MODEL}")
+print(f"api_key: {st.secrets.GEMINI_API_KEY}")
+print(f"project: {st.secrets.GEMINI_PROJECT_ID}")
+
 @st.cache_resource
 def get_model_obj():
-  llm = HuggingFaceEndpoint(
-    repo_id=st.secrets.HUGGINGFACE_MODEL,
-    verbose=False,
-    max_new_tokens=2000,
-    temperature=0,
-    repetition_penalty=1.1,
-    huggingfacehub_api_token=st.secrets.HUGGINGFACEHUB_API_TOKEN
-  )
-  chat_model = ChatHuggingFace(llm=llm)
-  return llm, chat_model
+  chat_model = ChatGoogleGenerativeAI(
+    model=st.secrets.GEMINI_MODEL,
+    api_key=st.secrets.GEMINI_API_KEY)
+  return chat_model
 
 cypher_prompt = PromptTemplate(
 	input_variables=["schema", "question", "corrections", "username"],
 	template=CYPHER_GENERATION_TEMPLATE
 )
 
-llm, chat_model = get_model_obj()
+chat_model = get_model_obj()
 vector_store, embedding_model, graph = setup_graph_and_vector()
 
 chain = GraphCypherQAChain.from_llm(

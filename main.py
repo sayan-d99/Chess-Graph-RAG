@@ -37,7 +37,7 @@ st.title("ChessRAG")
 col1, col2 = st.columns(2)
 
 with col1:
-  player_input = st.text_input("", placeholder="Enter Lichess User Name")
+  player_input = st.text_input("Enter Lichess User Name", placeholder="Enter Lichess User Name")
   st.session_state.username = player_input
   if st.button("Load My Games", disabled=len(player_input) == 0):
     with st.status(f"Loading {st.secrets.GAME_FETCH_COUNT} games of {player_input}") as status:
@@ -69,7 +69,7 @@ def render_chat():
     st.session_state.is_processing_prompt = True
     st.rerun(scope="fragment")
     
-  if not st.session_state.game_data_loaded and st.session_state.is_processing_prompt and st.session_state.current_prompt:  
+  if st.session_state.game_data_loaded and st.session_state.is_processing_prompt and st.session_state.current_prompt:  
     st.session_state.queries.append(get_chat_message("user", st.session_state.current_prompt))
     response = "Something went wrong when answering the query"
     with chat_container:

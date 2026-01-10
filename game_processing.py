@@ -38,20 +38,20 @@ def process_game(game):
   # print(f"Entering process_games. Processing game {game['id']}")
   board.reset()
   if not 'user' in game['players']['white']:
-    print(f"User not found: {game}")
+    # print(f"User not found: {game}")
     player_id = f"unknown_player_black_{game['id']}"
     game['players']['white']['user'] = dict()
     game['players']['white']['user']['id'] = player_id
     game['players']['white']['user']['name'] = player_id
 
   if not 'user' in game['players']['black']:
-    print(f"User not found: {game}")
+    # print(f"User not found: {game}")
     player_id = f"unknown_player_white_{game['id']}"
     game['players']['black']['user'] = dict()
     game['players']['black']['user']['id'] = player_id
     game['players']['black']['user']['name'] = player_id
 
-  print(f"Game: {game}")
+  # print(f"Game: {game}")
 
   if 'moves' in game and len(game['moves']) > 0:
     moves = game['moves']
