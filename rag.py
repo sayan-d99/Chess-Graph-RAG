@@ -6,109 +6,25 @@ import numpy as np
 import streamlit as st
 from langchain.embeddings.base import Embeddings
 from langchain_neo4j import GraphCypherQAChain, Neo4jGraph, Neo4jVector
-from langchain_core.prompts import PromptTemplate
+from langchain_neo4j.chains.graph_qa.cypher_utils import CypherQueryCorrector
+from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
+from llm_outputs import Node1ClassificationOutput, FinalResponse
 from typing import List, Any
 
-CORRECTIONS = [
-  """
-		When fetching multiple relations at once, do not use `:` before every relation. This feature is deprecated in Neo4j. Use `:` only before the first relation. For example,
-		MATCH (g: Game)-[:WHITE_PLAYER|BLACK_PLAYER]->(p: Player)
-  """,
- 	"""When querying for games played by a player, the query generated currently is
-		MATCH (p:Player)-[:WHITE_PLAYER|:BLACK_PLAYER]->(g:Game)
-		This is wrong. The relation WHITE_PLAYER and BLACK_PLAYER are from the Game node to the Player node.
-		Hence, the correct query is 
-		MATCH (g:Game)-[:WHITE_PLAYER|BLACK_PLAYER]->(p: Player)
- 	"""
-]
-
-CYPHER_GENERATION_TEMPLATE = """
-You are an expert Neo4j Developer and Chess Analyst.
-Your task is to answer the user's question regarding chess analytics. Convert the user's natural language question into the most relevant and valid Cypher query as required and use it to gather data to answer the user's query.
-You are given a Graph DB which contains the chess game data you are supposed to analyze based on the user query.
-
-CRITICAL: Output ONLY the Cypher query. 
-Start your response directly with the word MATCH or CALL. 
-Do not use <think> tags. Do not explain your code.
-
-THE GRAPH DB SCHEMA (Strictly enforce this)
-Do not guess the schema. Use ONLY the nodes and relationships defined below:
-
-Auto-generated schema:
-{schema}
-
-### 1. Detailed Description of the Nodes & Properties in the schema (STRICTLY FOLLOW THE BELOW SCHEMA DESCRIBED. DO NOT USE ANY NODES AND ATTRIBUTES OUTSIDE OF THE ONES MENTIONED BELOW)
-- Game
-  - `id` (String). Unique Identifier of the Game
-  - `fullId` (String) 
-  - `status` (String). It can be one of the following values - 'created','started','aborted','mate' (value when game ends in checkmate),'resign','stalemate','timeout','draw','outoftime','cheat','noStart','unknownFinish','insufficientMaterialClaim'
-  - `result` (String): e.g., "1-0" (White wins), "0-1" (Black wins), "1/2-1/2" (game is a draw).
-  - `winingSide` (String) - The side which won the game. Values can be 'white' or 'black'. If there is no winner due to any reason such as draw, the attribute will have the value '__no__winner__'. Check the `winningId` attribute for more information.
-  - `winnerId` (String) - The id of the player who won the game. This value will be same as pid attribute on Player Node
-  - `date` (Date): Date of the game.
-- GameMove
-  - `san` (String): Standard Algebraic Notation (e.g., "Nf3", "e4").
-  - `moveNumber` (Integer): The move number.
-  - `movingSide` (String): The moving side. Values can be 'white' or 'black'
-- FEN
-  - `fen` (String): The FEN string of the board position.
-  - `embedding` (List<Float>): The vector representation (do not query this directly).
-- Player
-  - `pid` (String): ID of the player.
-  - `name` (String): Name of the player.
-- Opening
-  - `name` (String): Name of the opening (e.g., "Sicilian Defense").
-  - `eco` (String): The code (e.g., "B90").
-
-Relationships:
-- (:Game)-[:WHITE_PLAYER]->(:Player)
-- (:Game)-[:BLACK_PLAYER]->(:Player)
-- (:Game)-[:OPENING]->(:Opening)
-- (:Game)-[:FIRST_MOVE]->(:GameMove)
-- (:GameMove)-[:NEXT_MOVE]->(:GameMove)
-- (:GameMove)-[:POSITION_REACHED]->(:FEN)
-
-### 2. HOW TO USE RELATIONS?
-Here are some examples about how to use the above defined relations to fetch different kinds of data 
-- Fetch Games of a Player.
-	Cypher: MATCH (g:Game) -[:WHITE_PLAYER|BLACK_PLAYER] -> (p: Player)
-- Fetch Games of a Player played as white
-	Cypher: MATCH (g:Game) -[:WHITE_PLAYER] -> (p: Player)
-- Fetch Games of a Player played as black
-	Cypher: MATCH (g:Game) -[:BLACK_PLAYER] -> (p: Player)
-- Fetch the type of opening played in a game
-	Cypher: MATCH (g:Game) -[:OPENING] -> (p: Opening)
-- Fetch the type first move played in the game
-	Cypher: MATCH (g:Game) -[:FIRST_MOVE] -> (gm: GameMove)
-- Fetch the games played in a Game
-	Cypher: MATCH (g:Game) -[:FIRST_MOVE]->(gm: GameMove)
-	MATCH (gm: GameMove) -[:NEXT_MOVE]->(gm: GameMove) // Traverse this relation recursively until you run out of GameMove nodes
-
-
-### 3. LOGIC & RULES
-- CRITICAL: Output ONLY the Cypher query. Start your response directly with the word MATCH or CALL. Do not use <think> tags. Do not explain your code. 
--Similarity Search: If the user asks for "similar positions", "positions like this", or "positional themes", you MUST use the vector index.
-  - Syntax: `CALL db.index.vector.queryNodes('fen_embeddings', 10, $embedding) YIELD node AS fen, score`
-- Game Moves: For every move of a game, a GameMove Node is created. The Game node is related to the first GameMove using the 'START_POSITION' relation. GameMove nodes are related to each other using 'NEXT_MOVE' relation.
-- Traversing Moves: To find what happened after a position, traverse: `(fen)<-[:POSITION_REACHED]-(gm)-[:NEXT_MOVE]->(next_gm)`
-- Evaluation: `eval` is from White's perspective. High positive = White winning. High negative = Black winning.
-
-### 4. MANUAL PROGRAMMER FEEDBACK AND CORRECTIONS
-The following rules were established to correct previous model errors. 
-Follow these strictly:
-{corrections}
-
--------------------------------------------------------
-Answer the below question for the player with pid : {username}
-{question}
-"""
 
 # EMBEDDING CLASS SETUP
 ENCODER_PATH = os.path.join(os.getcwd(), "Encoder-ChessLM")
 if ENCODER_PATH not in sys.path:
     sys.path.append(ENCODER_PATH)
+
+def load_prompt(filename):
+  with open(filename, 'r') as f:
+    return f.read()
+
+CYPHER_QUERY_PROMPT = load_prompt("prompts/cypher_generation.txt")
+DECISION_PROMPT = load_prompt("prompts/decision_prompt.txt")
+RESPONSE_GENERATOR_PROMPT = load_prompt("prompts/response_generator.txt")
 
 try:
   # Importing the exact model class from the user's train.py
@@ -266,10 +182,6 @@ def setup_graph_and_vector():
   vector_store = generate_fen_embeddings()
   return vector_store, embedding_model, graph
 
-print(f"model: {st.secrets.GEMINI_MODEL}")
-print(f"api_key: {st.secrets.GEMINI_API_KEY}")
-print(f"project: {st.secrets.GEMINI_PROJECT_ID}")
-
 @st.cache_resource
 def get_model_obj():
   chat_model = ChatGoogleGenerativeAI(
@@ -277,26 +189,67 @@ def get_model_obj():
     api_key=st.secrets.GEMINI_API_KEY)
   return chat_model
 
-cypher_prompt = PromptTemplate(
-	input_variables=["schema", "question", "corrections", "username"],
-	template=CYPHER_GENERATION_TEMPLATE
-)
+# cypher_prompt = PromptTemplate(
+# 	input_variables=["schema", "question", "corrections", "username"],
+# 	template=CYPHER_QUERY_PROMPT
+# )
 
 chat_model = get_model_obj()
 vector_store, embedding_model, graph = setup_graph_and_vector()
 
-chain = GraphCypherQAChain.from_llm(
+node1_prompt =  ChatPromptTemplate.from_messages([
+    ("system", DECISION_PROMPT),
+    ("human", "{query}")
+])
+node1_chain = node1_prompt | chat_model.with_structured_output(Node1ClassificationOutput)
+
+node2_prompt = ChatPromptTemplate([
+  ("system", CYPHER_QUERY_PROMPT),
+  ("human", "Answer the following question for the player with pid : {username} - {query}")
+])
+node2 = GraphCypherQAChain.from_llm(
 	llm=chat_model,
   vector_store=vector_store,
   graph=graph,
   verbose=True,
-  cypher_prompt=cypher_prompt,
+  cypher_prompt=node2_prompt,
   return_intermediate_steps=True,
+  return_direct=True,
   allow_dangerous_requests=True
 )
 
+node3_prompt = ChatPromptTemplate.from_messages([
+  ("system", RESPONSE_GENERATOR_PROMPT),
+  ("human", "Query: {query}\nDatabase Data: {raw_data}")
+])
+node3_chain = node3_prompt | chat_model.with_structured_output(FinalResponse)
+
 def execute_rag_query(user_prompt, username):
   print(f"Executing Prompt: {user_prompt} for user : {username}")
-  chain_res = chain.invoke({"query": user_prompt, "corrections": CORRECTIONS, "username": username})
-  print("Graph RAG Response", chain_res)
-  return chain_res['result']
+  node1_output = node1_chain.invoke({"query": user_prompt})
+  print(f"Node 1 Output: {node1_output}")
+  if node1_output.category != "complex":
+    return FinalResponse(
+      category=node1_output.category,
+      text_res=node1_output.response,
+      has_chart=False,
+      chart_data=None,
+      suggestions=[] 
+    )
+  
+  node2_output = node2.invoke({"query": user_prompt, "username": username})
+  print(f"Node 2 Output: {node2_output}")
+  raw_data = node2_output['result']
+  
+  if not raw_data:
+    return FinalResponse(
+      category="no_data", 
+      text_res="Could not find any data relevant to your query. Please ask another question",
+      has_chart=False,
+      chart_data=None,
+      suggestions=[]
+    )
+  
+  node3_output = node3_chain.invoke({"query": user_prompt, "raw_data": raw_data})
+  print(f"Node 3 Output: {node3_output}")
+  return node3_output
