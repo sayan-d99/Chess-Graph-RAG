@@ -2,9 +2,11 @@ import streamlit as st
 import streamlit.components.v1 as components
 import time
 import random
+import pandas as pd
 
 from game_processing import load_games
-from rag import execute_rag_query
+from rag.orchestrator import execute_rag_query
+from mytypes import ChatMessage
 
 def setup_session():
   keys = [
@@ -12,7 +14,8 @@ def setup_session():
     ("username", ""), 
     ("is_processing_prompt", False), 
     ("current_prompt", ""), ("vg", None),
-    ("game_data_loaded", False)
+    ("game_data_loaded", False),
+    ("suggestions", [])
   ]
   for k in keys:
     key = k[0]
@@ -20,8 +23,6 @@ def setup_session():
     if key not in st.session_state:
       st.session_state[key] = value
 
-def get_chat_message(role, message):
-  return {"role": role, "content": message}
 
 def generate_response():
   response = "This is a response.This is a response.This is a response.This is a response"
@@ -40,44 +41,57 @@ with col1:
   player_input = st.text_input("Enter Lichess User Name", placeholder="Enter Lichess User Name")
   st.session_state.username = player_input
   if st.button("Load My Games", disabled=len(player_input) == 0):
-    with st.status(f"Loading {st.secrets.GAME_FETCH_COUNT} games of {player_input}") as status:
+    with st.status(f"Loading games of {player_input}") as status:
       st.session_state.vg = load_games(player_input)
       st.session_state.game_data_loaded = True
       status.update(label="Games have been loaded. Fire your queries", expanded=False)
-      
     with st.container(border=True):
       html_content = st.session_state.vg.render()
-      components.html(html_content.data, height=400, scrolling=True)
-  
+      components.html(html_content.data, height=600, scrolling=True)
+
+def set_current_user_input(input_str):
+  st.session_state.suggestions = []
+  st.session_state.processing = True  
+  st.session_state.current_prompt = input_str  
+  st.session_state.is_processing_prompt = True
+  st.rerun(scope="fragment")
+
 @st.fragment
 def render_chat():
   print(f"Messages: {st.session_state.queries}")
-  chat_container = st.container(height=400)
-  
+  chat_container = st.container(height=600)
   with chat_container:
-    for q in st.session_state.queries:
-      st.chat_message(q["role"]).markdown(q["content"])
+    for msg in st.session_state.queries:
+      msg.render(st)
   
+  if st.session_state.suggestions and len(st.session_state.suggestions) > 0:
+    selection = st.pills("Suggestions", st.session_state.suggestions)
+    set_current_user_input(selection)
+      
   user_prompt = st.chat_input(
     "What do you want to know about your games?" if st.session_state.game_data_loaded else "Load your games before you can ask a question",
     disabled=not st.session_state.game_data_loaded or st.session_state.is_processing_prompt
   )
-  
   if user_prompt:
-    st.session_state.processing = True  
-    st.session_state.current_prompt = user_prompt  
-    st.session_state.is_processing_prompt = True
-    st.rerun(scope="fragment")
+    set_current_user_input(user_prompt)
     
-  if st.session_state.game_data_loaded and st.session_state.is_processing_prompt and st.session_state.current_prompt:  
-    st.session_state.queries.append(get_chat_message("user", st.session_state.current_prompt))
-    response = "Something went wrong when answering the query"
+  if st.session_state.game_data_loaded and st.session_state.is_processing_prompt and st.session_state.current_prompt:
+    user_chat_message = ChatMessage(
+      role="human",
+      text=st.session_state.current_prompt,
+      has_chart=False,
+      chart_df=None,
+      chart_type=None
+    )  
+    st.session_state.queries.append(user_chat_message)
+    
     with chat_container:
-      st.chat_message("user").markdown(st.session_state.current_prompt)
+      user_chat_message.render(st)
       response = execute_rag_query(st.session_state.current_prompt, st.session_state.username.lower())
-      # print('AI response:', response)
-      st.chat_message("assistant").markdown(response)
-      st.session_state.queries.append(get_chat_message("assistant", response))
+      ai_chat_message = ChatMessage.from_llm_response(response)
+      ai_chat_message.render(st)
+      st.session_state.queries.append(ai_chat_message)
+      st.session_state.suggestions = response.suggestions
     
     st.session_state.is_processing_prompt = False
     st.session_state.current_prompt = None

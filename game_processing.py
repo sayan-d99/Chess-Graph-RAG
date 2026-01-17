@@ -3,16 +3,13 @@ import berserk
 import chess
 import time
 from db import execute_db_query
-from rag import generate_fen_embeddings
+from rag.orchestrator import generate_fen_embeddings
 from neo4j import Result
 from neo4j_viz import neo4j
+from util import load_file
 
-def load_query(filename):
-  with open(filename, 'r') as f:
-    return f.read()
-
-insert_query = load_query("queries/insert_games.cypher")
-fetch_query = load_query("queries/fetch_games.cypher")
+insert_query = load_file("queries/insert_games.cypher")
+fetch_query = load_file("queries/fetch_games.cypher")
 
 @st.cache_resource
 def get_lichess_client():
@@ -24,13 +21,15 @@ board = chess.Board()
 
 @st.cache_data(ttl=86400)
 def fetch_games_for_user(username):
-  # return [li_client.games.export('pWl6FEXl', as_pgn=False, moves=True, opening=True, literate=False, clocks=False)]
   games_iterator = li_client.games.export_by_player(
     username=username,
     perf_type="blitz,rapid",
     max=st.secrets.GAME_FETCH_COUNT,
-    opening=True,
-    literate=True,
+    as_pgn=False,
+    moves=True,
+    evals=True,
+    analysed=True,
+    opening=True
   )
   return [x for x in games_iterator] 
 
@@ -51,7 +50,7 @@ def process_game(game):
     game['players']['black']['user']['id'] = player_id
     game['players']['black']['user']['name'] = player_id
 
-  # print(f"Game: {game}")
+  print(f"Game: {game}")
 
   if 'moves' in game and len(game['moves']) > 0:
     moves = game['moves']
@@ -81,7 +80,6 @@ def load_games(li_username):
   games_processed = [process_game(game) for game in games]
   print("Games processed")
   
-  st.write("Games processed")
   st.write("Saving Games")
 
   print("Inserting games in neo4j")
@@ -105,7 +103,7 @@ def load_games(li_username):
   vg = neo4j.from_neo4j(game_data_graph)
   print(f"Visualization graph built with {len(vg.nodes)} nodes and {len(vg.relationships)} relations")
   
-  st.write("Games saved")
+  st.write("Games loaded successfully")
   t2 = time.time()
   print(f"Loaded games in {t2-t1} seconds")
   return vg

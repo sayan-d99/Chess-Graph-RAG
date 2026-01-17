@@ -1,30 +1,15 @@
-import sys
-import os
 import torch
 import chess
-import numpy as np
-import streamlit as st
-from langchain.embeddings.base import Embeddings
-from langchain_neo4j import GraphCypherQAChain, Neo4jGraph, Neo4jVector
-from langchain_neo4j.chains.graph_qa.cypher_utils import CypherQueryCorrector
-from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
-from langchain_google_genai import ChatGoogleGenerativeAI
-from llm_outputs import Node1ClassificationOutput, FinalResponse
 from typing import List, Any
-
+import sys
+import os
+import numpy as np
+from langchain.embeddings.base import Embeddings
 
 # EMBEDDING CLASS SETUP
 ENCODER_PATH = os.path.join(os.getcwd(), "Encoder-ChessLM")
 if ENCODER_PATH not in sys.path:
     sys.path.append(ENCODER_PATH)
-
-def load_prompt(filename):
-  with open(filename, 'r') as f:
-    return f.read()
-
-CYPHER_QUERY_PROMPT = load_prompt("prompts/cypher_generation.txt")
-DECISION_PROMPT = load_prompt("prompts/decision_prompt.txt")
-RESPONSE_GENERATOR_PROMPT = load_prompt("prompts/response_generator.txt")
 
 try:
   # Importing the exact model class from the user's train.py
@@ -156,100 +141,3 @@ class ChessLMEmbeddings(Embeddings):
 
   def embed_query(self, text: str) -> List[float]:
     return self.embed_documents([text])[0]
-
-# EMBEDDING CLASS OBJECT
-embedding_model = ChessLMEmbeddings(model_path="./model.safetensors")
-
-def generate_fen_embeddings():
-  return Neo4jVector.from_existing_graph(
-    embedding=embedding_model,
-    url=st.secrets.NEO4J_URI,
-    username=st.secrets.NEO4J_USERNAME,
-    password=st.secrets.NEO4J_PASSWORD,
-    index_name="fen_embeddings",
-    node_label="FEN",
-    text_node_properties=["fen"],
-    embedding_node_property="embedding"
-  )
-
-@st.cache_resource
-def setup_graph_and_vector():
-  graph = Neo4jGraph(
-    url=st.secrets["NEO4J_URI"],
-    username=st.secrets["NEO4J_USERNAME"],
-    password=st.secrets["NEO4J_PASSWORD"]
-  )
-  vector_store = generate_fen_embeddings()
-  return vector_store, embedding_model, graph
-
-@st.cache_resource
-def get_model_obj():
-  chat_model = ChatGoogleGenerativeAI(
-    model=st.secrets.GEMINI_MODEL,
-    api_key=st.secrets.GEMINI_API_KEY)
-  return chat_model
-
-# cypher_prompt = PromptTemplate(
-# 	input_variables=["schema", "question", "corrections", "username"],
-# 	template=CYPHER_QUERY_PROMPT
-# )
-
-chat_model = get_model_obj()
-vector_store, embedding_model, graph = setup_graph_and_vector()
-
-node1_prompt =  ChatPromptTemplate.from_messages([
-    ("system", DECISION_PROMPT),
-    ("human", "{query}")
-])
-node1_chain = node1_prompt | chat_model.with_structured_output(Node1ClassificationOutput)
-
-node2_prompt = ChatPromptTemplate([
-  ("system", CYPHER_QUERY_PROMPT),
-  ("human", "Answer the following question for the player with pid : {username} - {query}")
-])
-node2 = GraphCypherQAChain.from_llm(
-	llm=chat_model,
-  vector_store=vector_store,
-  graph=graph,
-  verbose=True,
-  cypher_prompt=node2_prompt,
-  return_intermediate_steps=True,
-  return_direct=True,
-  allow_dangerous_requests=True
-)
-
-node3_prompt = ChatPromptTemplate.from_messages([
-  ("system", RESPONSE_GENERATOR_PROMPT),
-  ("human", "Query: {query}\nDatabase Data: {raw_data}")
-])
-node3_chain = node3_prompt | chat_model.with_structured_output(FinalResponse)
-
-def execute_rag_query(user_prompt, username):
-  print(f"Executing Prompt: {user_prompt} for user : {username}")
-  node1_output = node1_chain.invoke({"query": user_prompt})
-  print(f"Node 1 Output: {node1_output}")
-  if node1_output.category != "complex":
-    return FinalResponse(
-      category=node1_output.category,
-      text_res=node1_output.response,
-      has_chart=False,
-      chart_data=None,
-      suggestions=[] 
-    )
-  
-  node2_output = node2.invoke({"query": user_prompt, "username": username})
-  print(f"Node 2 Output: {node2_output}")
-  raw_data = node2_output['result']
-  
-  if not raw_data:
-    return FinalResponse(
-      category="no_data", 
-      text_res="Could not find any data relevant to your query. Please ask another question",
-      has_chart=False,
-      chart_data=None,
-      suggestions=[]
-    )
-  
-  node3_output = node3_chain.invoke({"query": user_prompt, "raw_data": raw_data})
-  print(f"Node 3 Output: {node3_output}")
-  return node3_output
