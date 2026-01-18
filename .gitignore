@@ -6,4 +6,5 @@ Encoder-ChessLM
 *.txt
 *.env
 *.safetensors
+*.ipynb
 

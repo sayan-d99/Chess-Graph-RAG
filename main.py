@@ -6,7 +6,7 @@ import pandas as pd
 
 from game_processing import load_games
 from rag.orchestrator import execute_rag_query
-from mytypes import ChatMessage
+from models import ChatMessage
 
 def setup_session():
   keys = [

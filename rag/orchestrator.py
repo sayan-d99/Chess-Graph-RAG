@@ -4,7 +4,7 @@ from langchain_neo4j import GraphCypherQAChain, Neo4jGraph, Neo4jVector
 from langchain_neo4j.chains.graph_qa.cypher_utils import CypherQueryCorrector
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-from mytypes import Node1ClassificationOutput, FinalResponse
+from models import Node1ClassificationOutput, FinalResponse
 from rag.embedding import ChessLMEmbeddings
 from util import load_file
 
