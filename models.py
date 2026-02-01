@@ -1,5 +1,5 @@
 from enum import StrEnum
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
 from pydantic import BaseModel
 import pandas as pd
 
@@ -9,11 +9,16 @@ class Node1ClassificationOutput(BaseModel):
   category: Literal["invalid", "simple", "complex"]
   response: str
   
+class ChartColumn(BaseModel):
+  label: str
+  values: List[Union[str,int,float]]  
+
 class ChartData(BaseModel):
   """Structure for chart rendering"""
   chart_type: Literal["area", "line", "scatter", "bar"]
-  labels: List[str]
-  values: List[float]
+  data: List[ChartColumn]
+  x: str
+  y: List[str]
   x_label: str
   y_label: str
   
@@ -22,43 +27,28 @@ class FinalResponse(BaseModel):
   response: str
   has_chart: bool
   chart_data: Optional[ChartData]
-  suggestions: List[str]
   
 class ChatMessage:
-  def __init__(self, role, text, has_chart, chart_type, chart_df):
+  def __init__(self, role, text, has_chart, chart_data):
     self.role = role
     self.text = text
     self.has_chart = has_chart
-    self.chart_type = chart_type
-    self.chart_df = chart_df
+    self.chart_data = chart_data
     
   def render(self, st):
     with st.chat_message(self.role):
       st.markdown(self.text)
       if self.has_chart:
-        if self.chart_type == "area":
-          st.area_chart(self.chart_df)
-        elif self.chart_type == "bar":
-          st.bar_chart(self.chart_df)
-        elif self.chart_type == "scatter":
-          st.scatter_chart(self.chart_df)
-        elif self.chart_type == "line":
-          st.line_chart(self.chart_df)
+        # Get reference to the correct streamlit chart method
+        chart_method = f"{self.chart_data.chart_type}_chart"
+        method_ref = getattr(st, chart_method)
+        # Create Pandas DF
+        data_dict = {col.label : col.values for col in self.chart_data.data}
+        method_ref(pd.DataFrame(data_dict), x=self.chart_data.x, y=self.chart_data.y, x_label=self.chart_data.x_label, y_label=self.chart_data.y_label)
       
   @classmethod    
-  def from_llm_response(cls, response):
-    response_text = response.response
-    has_chart = response.has_chart
-    chart_type = ""
-    chart_df = None
-    if has_chart:
-      chart_data = response.chart_data
-      chart_type = chart_data.chart_type
-      chart_df = pd.DataFrame({
-        chart_data.x_label: chart_data.labels,
-        chart_data.y_label: chart_data.values
-      })
-    return cls(role="ai", text=response_text, has_chart=has_chart, chart_type=chart_type, chart_df=chart_df)
+  def from_llm_response(cls, llm_res: FinalResponse):
+    return cls(role="ai", text=llm_res.response, has_chart=llm_res.has_chart, chart_data=llm_res.chart_data if llm_res.has_chart else None)
   
 class MoveAnalysisJudgement(StrEnum):
   INACCURACY = "Inaccuracy"

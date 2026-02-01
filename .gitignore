@@ -7,4 +7,5 @@ Encoder-ChessLM
 *.env
 *.safetensors
 *.ipynb
+*.json
 

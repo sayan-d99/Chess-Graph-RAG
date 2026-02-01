@@ -4,8 +4,7 @@ MERGE (w:Player {pid: game.white_id})
 MERGE (b:Player {pid: game.black_id})
 
 MERGE (g:Game {id: game.game_id})
-ON CREATE SET g.gameType = game.perf,
-    g.status = game.status,
+ON CREATE SET g.status = game.status,
     g.winningSide = game.winning_side,
     g.playedOn = game.played_on,
     g.winnerId = game.winner_id,

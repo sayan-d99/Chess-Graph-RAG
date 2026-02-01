@@ -8,9 +8,11 @@ from models import Node1ClassificationOutput, FinalResponse
 from rag.embedding import ChessLMEmbeddings
 from util import load_file
 
+print("Loading prompts")
 CYPHER_QUERY_PROMPT = load_file("prompts/cypher_generation.txt")
 DECISION_PROMPT = load_file("prompts/decision_prompt.txt")
 RESPONSE_GENERATOR_PROMPT = load_file("prompts/response_generator.txt")
+print("Prompts loaded")
 
 # EMBEDDING CLASS OBJECT
 embedding_model = ChessLMEmbeddings(model_path="./model.safetensors")
@@ -62,7 +64,7 @@ node1_chain = node1_prompt | chat_model.with_structured_output(Node1Classificati
 
 node2_prompt = ChatPromptTemplate([
   ("system", CYPHER_QUERY_PROMPT),
-  ("human", "Answer the following question for the player with pid : {username} - {query}")
+  ("human", "Answer the following question for the player with pid : {pid} - {query}")
 ])
 node2 = GraphCypherQAChain.from_llm(
 	llm=chat_model,
@@ -79,32 +81,22 @@ node3_prompt = ChatPromptTemplate.from_messages([
   ("system", RESPONSE_GENERATOR_PROMPT),
   ("human", "Query: {query}\nDatabase Data: {raw_data}")
 ])
-node3_chain = node3_prompt | chat_model.with_structured_output(FinalResponse)
+node3_chain = node3_prompt | chat_model.with_structured_output(FinalResponse, strict=False)
 
 def execute_rag_query(user_prompt, username):
   print(f"Executing Prompt: {user_prompt} for user : {username}")
   node1_output = node1_chain.invoke({"query": user_prompt})
-  print(f"Node 1 Output: {node1_output}")
+  # print(f"Node 1 Output: {node1_output}")
   if node1_output.category != "complex":
-    return FinalResponse(
-      response=node1_output.response,
-      has_chart=False,
-      chart_data=None,
-      suggestions=[] 
-    )
+    return FinalResponse(response=node1_output.response,has_chart=False,chart_data=None)
   
-  node2_output = node2.invoke({"query": user_prompt, "username": username})
-  print(f"Node 2 Output: {node2_output}")
+  node2_output = node2.invoke({"query": user_prompt, "pid": username})
+  # print(f"Node 2 Output: {node2_output}")
   raw_data = node2_output['result']
   
   if not raw_data:
-    return FinalResponse(
-      response="Could not find any data relevant to your query. Please ask another question",
-      has_chart=False,
-      chart_data=None,
-      suggestions=[]
-    )
+    return FinalResponse(response="Could not find any data relevant to your query. Please ask another question",has_chart=False,chart_data=None)
   
   node3_output = node3_chain.invoke({"query": user_prompt, "raw_data": raw_data})
-  print(f"Node 3 Output: {node3_output}")
+  # print(f"Node 3 Output: {node3_output}")
   return node3_output

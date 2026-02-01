@@ -9,8 +9,10 @@ from neo4j_viz import neo4j
 from util import load_file
 from models import ChessGame, ChessMove, MoveAnalysisJudgement, Side, ChessOpening
 
+print("Loading db queries")
 insert_query = load_file("queries/insert_games.cypher")
 fetch_query = load_file("queries/fetch_games.cypher")
+print("Db queries loaded")
 
 @st.cache_resource
 def get_lichess_client():
@@ -55,8 +57,9 @@ def get_move_judgement(move_analysis):
     judgement = MoveAnalysisJudgement(move_analysis['judgment']['name']) if 'judgment' in move_analysis and 'name' in move_analysis['judgment'] else MoveAnalysisJudgement.NONE
     # print(judgement)
   return eval, judgement, is_forced_mate
+
 def process_game_v2(game):
-  print("Processing game: ", game)
+  # print("Processing game: ", game)
   board.reset()
   game_id = game['id']
   white_id = get_player_id(game, 'white')
@@ -105,8 +108,8 @@ def process_game_v2(game):
       chess_moves.append(cm)
     ch.moves = chess_moves
     ch.n_moves = len(chess_moves) // 2 if len(chess_moves) % 2 == 0 else len(chess_moves) // 2 + 1
-  print("Processed Game:", ch)
-  return ch
+  # print("Processed Game:", ch)
+  return ch.to_dict()
 
 # def process_game(game):
 #   # print(f"Entering process_games. Processing game {game['id']}")
@@ -149,7 +152,8 @@ def load_games(li_username):
   
   print("Processing games")
   games_processed = [process_game_v2(game) for game in games]
-  print("Games processed", games_processed)
+  print("Games processed")
+  # print("Games processed", games_processed[:2])
   
   st.write("Saving Games")
   
@@ -160,9 +164,9 @@ def load_games(li_username):
   print(f"Games Inserted {insert_result}")
   print(f"Games Inserted in {insert_time_2 - insert_time_1} seconds. Insertion Summary: {insert_result.summary.counters}")
   
-  print("Fetching game data for visualization")
-  game_data_graph = execute_db_query(fetch_query, params=dict(playerId=li_username), result_transformer=Result.graph)
-  print(f"Data Fetched. Received transformed graph object")
+  print(f"Fetching game data of {li_username.lower()} for visualization")
+  game_data_graph = execute_db_query(fetch_query, params=dict(playerId=li_username.lower()), result_transformer=Result.graph)
+  print(f"Data Fetched. Received transformed graph object", game_data_graph)
   
   fen_time_1 = time.time()
   print("Generate FEN embedding")
