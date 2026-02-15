@@ -1,6 +1,7 @@
 **/__pycache__
 venv
 .streamlit
+.github
 Encoder-ChessLM
 
 *.txt

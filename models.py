@@ -2,7 +2,7 @@ from enum import StrEnum
 from typing import List, Literal, Optional, Union
 from pydantic import BaseModel
 import pandas as pd
-
+import json
 
 class Node1ClassificationOutput(BaseModel):
   """Classification logic for the first gate"""
@@ -45,7 +45,13 @@ class ChatMessage:
         # Create Pandas DF
         data_dict = {col.label : col.values for col in self.chart_data.data}
         method_ref(pd.DataFrame(data_dict), x=self.chart_data.x, y=self.chart_data.y, x_label=self.chart_data.x_label, y_label=self.chart_data.y_label)
-      
+        
+    def __repr__(self):
+      return f"Role: {self.role} Content: {self.text} Has Chart: {self.has_chart}"
+    
+    def __str__(self):
+      return f"Role: {self.role} Content: {self.text} Has Chart: {self.has_chart}"
+
   @classmethod    
   def from_llm_response(cls, llm_res: FinalResponse):
     return cls(role="ai", text=llm_res.response, has_chart=llm_res.has_chart, chart_data=llm_res.chart_data if llm_res.has_chart else None)

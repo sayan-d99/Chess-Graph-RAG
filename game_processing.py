@@ -2,7 +2,7 @@ import streamlit as st
 import berserk
 import chess
 import time
-from db import execute_db_query
+from db.db import execute_db_query
 from rag.orchestrator import generate_fen_embeddings
 from neo4j import Result
 from neo4j_viz import neo4j
@@ -10,8 +10,8 @@ from util import load_file
 from models import ChessGame, ChessMove, MoveAnalysisJudgement, Side, ChessOpening
 
 print("Loading db queries")
-insert_query = load_file("queries/insert_games.cypher")
-fetch_query = load_file("queries/fetch_games.cypher")
+insert_query = load_file("db/queries/insert_games.cypher")
+fetch_query = load_file("db/queries/fetch_games.cypher")
 print("Db queries loaded")
 
 @st.cache_resource
